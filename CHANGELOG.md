@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2 (2026-10-04)
+- Viewer: v49 Gantt features ported. Batch-to-fill links (all, or on hover) that light up a PO's batch, trio, CIP, wash and fills; click to pin. Toolbar: critical path (with what held each step back), hover info on/off, week-limit or plan-only window, zoom and fit, show/hide and collapse per system and fill lines, S1-S4 highlights with their links, batches with 2+ fills, tank status strip and pinned tank status bar. Minor/standard/deep CIP and washes drawn as separate hatches.
+- Viewer: PO data page with sortable, searchable grids of batch POs, fill POs and product SKUs, filtered by category and system; clicking a row opens it on the Gantt.
+
 ## 0.2.1 (2026-10-04)
 - Viewer: `tools/viewer` exports optimised weeks (`export_weeks.py`) and builds a single-page Gantt (`build.py` + `template.html`) comparing CP-SAT and v49 plans, with P0/P3/P4/P6 scores and H4/H14 markings. Published as an artifact; the page shows precomputed plans and does not run the solver.
 
