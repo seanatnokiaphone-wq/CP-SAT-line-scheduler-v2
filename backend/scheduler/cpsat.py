@@ -8,6 +8,7 @@ each, with fills that are not on that line skipped (H7).
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -35,7 +36,7 @@ class Settings:
     targets: dict = field(default_factory=dict)  # P2: starred fill id -> target start hour
     starred: list = field(default_factory=list)  # P1
     time_limit: float = 60.0
-    workers: int = 4
+    workers: int = os.cpu_count() or 4
     horizon: float | None = None
     log: bool = False
     # Big weeks: only offer chain arcs between POs that sit within this many hours of each other in the
@@ -45,6 +46,12 @@ class Settings:
     # second, because each solve of a 200-PO model spends ~15s in presolve. None = decide by size.
     mode: str | None = None
     big_week: int = 60
+    # Planner steering (M1, M10, M11): pins fix a PO's start (and a fill's line, a batch's tank); POs not
+    # pinned may not start before replan_from, so a mid-week re-plan only moves work that has not started.
+    pins: dict = field(default_factory=dict)  # id -> {"start": h, "line": "F3", "tank": "T1A", "cip_start", "cip_end", "wash_start", "wash_end"}
+    replan_from: float | None = None
+    on_solution: object = None  # callback(seconds, level, objective, schedule) for live progress
+    refine: bool | None = None  # big weeks: window refinement after the whole-week solve (None = by size)
 
 
 LEVELS = ["P2 target misses", "P0 POs in week limit", "P1 starred fills", "P3 fills over hold limit",
@@ -264,6 +271,7 @@ class WeekModel:
                 m.AddCumulative(ivs, dem, 2)
 
         self.S, self.E, self.R, self.W, self.C, self.Fs, self.Fe, self.V, self.WD, self.A = S, E, R, W, C, Fs, Fe, V, WD, A
+        self._steer(s)
 
         # ---- objective terms ----
         L = q(s.week_limit)
@@ -301,6 +309,36 @@ class WeekModel:
         ]
         if hint:
             self.add_hint(hint)
+
+    # ---- planner steering: pinned POs (M11) and re-plan from a time (M1, M10) ----
+    def _steer(self, s: Settings):
+        m, pins = self.m, s.pins or {}
+        rq = lambda h: int(round(h * U))  # pins from people may be off the quarter hour; round them
+        for b in self.plant.batches:
+            pin = pins.get(b.id)
+            if pin and pin.get("start") is not None:
+                m.Add(self.S[b.id] == rq(pin["start"]))
+                if pin.get("cip_start") is not None and pin.get("cip_end") is not None:
+                    m.Add(self.W[b.id] == rq(pin["cip_start"]))
+                    m.Add(self.C[b.id] == rq(pin["cip_end"]) - rq(pin["cip_start"]))
+            elif s.replan_from is not None:
+                m.Add(self.S[b.id] >= rq(s.replan_from))
+                m.Add(self.W[b.id] >= rq(s.replan_from))
+        for f in self.plant.fills:
+            pin = pins.get(f.id)
+            if pin and pin.get("line"):
+                if pin["line"] not in self.A[f.id]:
+                    raise ValueError(f"{f.id} ({f.pack}) cannot run on {pin['line']} (H9/H10)")
+                m.Add(self.A[f.id][pin["line"]] == 1)
+            if pin and pin.get("start") is not None:
+                m.Add(self.Fs[f.id] == rq(pin["start"]))
+                if pin.get("wash_start") is not None and pin.get("wash_end") is not None:
+                    m.Add(self.V[f.id] == rq(pin["wash_start"]))
+                    m.Add(self.WD[f.id] == rq(pin["wash_end"]) - rq(pin["wash_start"]))
+            elif s.replan_from is not None:
+                m.Add(self.Fs[f.id] >= rq(s.replan_from))
+                m.Add(self.V[f.id] >= rq(s.replan_from))
+        self.tank_pin = {k: v["tank"] for k, v in pins.items() if v.get("tank")}
 
     # ---- warm start from another engine's schedule ----
     def add_hint(self, sch: Schedule):
@@ -349,15 +387,31 @@ class WeekModel:
             succ = {i: j for (i, j), lit in self.tank_arcs.items() if i is not None and v(lit)}
             heads = sorted([j for (i, j), lit in self.tank_arcs.items()
                             if i is None and v(lit) and self.B[j].system == sys], key=lambda j: v(self.S[j]))
-            for k, h in enumerate(heads):
-                j = h
+            # chain -> tank: a chain holding a tank-pinned batch keeps that tank (re-plans keep running POs
+            # where they are); the other chains take the free tanks in start order
+            chains = []
+            for h in heads:
+                c, j = [], h
                 while j is not None:
+                    c.append(j)
+                    j = succ.get(j)
+                chains.append(c)
+            tank_of, free = {}, list(tanks)
+            for k, c in enumerate(chains):
+                pinned = next((self.tank_pin[x] for x in c if self.tank_pin.get(x) in free), None)
+                if pinned:
+                    tank_of[k] = pinned
+                    free.remove(pinned)
+            for k in range(len(chains)):
+                if k not in tank_of:
+                    tank_of[k] = free.pop(0)
+            for k, c in enumerate(chains):
+                for j in c:
                     has_cip = v(self.C[j]) > 0 or (self.tank_arcs.get((None, j)) is not None and not v(self.tank_arcs[(None, j)]))
                     batches.append(BatchTask(
-                        id=j, tank=tanks[k], start=v(self.S[j]) / U, end=v(self.E[j]) / U,
+                        id=j, tank=tank_of[k], start=v(self.S[j]) / U, end=v(self.E[j]) / U,
                         cip_start=v(self.W[j]) / U if has_cip else None,
                         cip_end=(v(self.W[j]) + v(self.C[j])) / U if has_cip else None))
-                    j = succ.get(j)
         fills = []
         for f in self.plant.fills:
             line = next(l for l, a in self.A[f.id].items() if v(a))
@@ -387,6 +441,25 @@ def _staged(wm: "WeekModel", plant: Plant):
     return [first, second]
 
 
+class _Progress(cp_model.CpSolverSolutionCallback):
+    """Reports each improved solution (at most every `every` seconds) with the schedule it describes."""
+
+    def __init__(self, wm, level, t0, every=2.0):
+        super().__init__()
+        self.wm, self.level, self.t0, self.every, self.last = wm, level, t0, every, -1e9
+
+    def on_solution_callback(self):
+        now = time.time()
+        if now - self.last < self.every:
+            return
+        self.last = now
+        try:
+            sch = self.wm.extract(self)
+        except Exception:  # noqa: BLE001 - a half-built chain mid-search is not worth failing the solve for
+            return
+        self.wm.s.on_solution(round(now - self.t0, 1), self.level, self.ObjectiveValue(), sch)
+
+
 def solve(plant: Plant, downtime: list[Downtime], s: Settings, hint: Schedule | None = None,
           on_level=None) -> Schedule:
     """Lexicographic solve: each level is optimised within its share of the time limit, then held."""
@@ -411,7 +484,7 @@ def solve(plant: Plant, downtime: list[Downtime], s: Settings, hint: Schedule | 
         solver.parameters.max_time_in_seconds = budget
         solver.parameters.num_workers = s.workers
         solver.parameters.log_search_progress = s.log
-        st = solver.Solve(m)
+        st = solver.Solve(m, _Progress(wm, name, t0) if s.on_solution else None)
         statuses[name] = {"status": solver.StatusName(st), "value": solver.ObjectiveValue() if st in (cp_model.OPTIMAL, cp_model.FEASIBLE) else None,
                           "bound": solver.BestObjectiveBound(), "seconds": round(solver.WallTime(), 1)}
         if on_level:
