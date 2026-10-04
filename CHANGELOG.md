@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.2.1 (2026-10-04)
+- Viewer: `tools/viewer` exports optimised weeks (`export_weeks.py`) and builds a single-page Gantt (`build.py` + `template.html`) comparing CP-SAT and v49 plans, with P0/P3/P4/P6 scores and H4/H14 markings. Published as an artifact; the page shows precomputed plans and does not run the solver.
+
 ## 0.2.0 (2026-10-04)
 - v49's dispatch heuristic and strategy search ported to Python (`heuristic.py`); reproduces v49's best schedule
   (same tanks, lines and start times) on all 43 golden weeks.

@@ -1,0 +1,274 @@
+<title>CP-SAT Line Scheduler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:#f4f6f4;--panel:#ffffff;--fg:#17211d;--muted:#5c6b64;--line:#d8dfdb;--grid:#e7ece9;--row:#f9fbfa;
+  --accent:#0f7b6c;--accent-soft:#d6eee9;
+  --cat-a:#3f7cc4;--cat-b:#d08a2a;--cat-c:#8a5cc2;--cat-x:#5f8a6e;
+  --cip:#9aa7a1;--wash:#b9c3be;--held:rgba(23,33,29,.10);
+  --down:#c8423b;--down-soft:rgba(200,66,59,.14);--good:#1d8a4c;--bad:#c8423b;
+  --tip:#17211d;--tip-fg:#f4f6f4;--bar-fg:#ffffff;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101614;--panel:#17201d;--fg:#e4ebe7;--muted:#93a39b;--line:#2b3733;--grid:#222c29;--row:#141c19;
+  --accent:#3cc3ad;--accent-soft:#163a34;
+  --cat-a:#5d97de;--cat-b:#dfa04a;--cat-c:#a881de;--cat-x:#78a888;
+  --cip:#5f6d67;--wash:#46524d;--held:rgba(228,235,231,.10);
+  --down:#ec6a62;--down-soft:rgba(236,106,98,.18);--good:#4cc684;--bad:#ec6a62;
+  --tip:#e4ebe7;--tip-fg:#101614;--bar-fg:#ffffff;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101614;--panel:#17201d;--fg:#e4ebe7;--muted:#93a39b;--line:#2b3733;--grid:#222c29;--row:#141c19;
+  --accent:#3cc3ad;--accent-soft:#163a34;
+  --cat-a:#5d97de;--cat-b:#dfa04a;--cat-c:#a881de;--cat-x:#78a888;
+  --cip:#5f6d67;--wash:#46524d;--held:rgba(228,235,231,.10);
+  --down:#ec6a62;--down-soft:rgba(236,106,98,.18);--good:#4cc684;--bad:#ec6a62;
+  --tip:#e4ebe7;--tip-fg:#101614;--bar-fg:#ffffff;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 "IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;margin:0}
+.wrap{max-width:1500px;margin:0 auto;padding:20px 16px 48px;display:flex;flex-direction:column;gap:18px}
+.mono,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+.num{font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px}
+h1{font-size:26px;line-height:1.1;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:70ch}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+select,button{font:inherit;color:var(--fg)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;min-width:0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:transparent;padding:6px 12px;cursor:pointer;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--bar-fg)}
+.lbl{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kpi{background:var(--panel);padding:12px 14px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .rule{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--accent);margin-left:6px;text-transform:none;letter-spacing:0}
+.kpi .vals{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.kpi .big{font-size:24px;font-weight:600}
+.kpi .old{color:var(--muted);font-size:13px}
+.kpi .d{font-size:12px;font-weight:500}
+.good{color:var(--good)}.bad{color:var(--bad)}.same{color:var(--muted)}
+.meta{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;color:var(--muted);font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.pill i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:18px;height:10px;border-radius:2px;display:inline-block}
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.chart h2{font-size:15px;margin:0;padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.chart h2 small{color:var(--muted);font-weight:400}
+.gantt{display:grid;grid-template-columns:96px minmax(0,1fr)}
+.labels{border-right:1px solid var(--line);font-size:12px}
+.labels div{display:flex;align-items:center;padding:0 10px;white-space:nowrap;overflow:hidden}
+.labels .grp{font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.scroll{overflow-x:auto;overflow-y:hidden}
+svg text{font-family:"IBM Plex Mono",ui-monospace,monospace}
+#tip{position:fixed;z-index:10;pointer-events:none;background:var(--tip);color:var(--tip-fg);border-radius:6px;padding:8px 10px;font-size:12.5px;line-height:1.4;max-width:300px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+#tip b{font-weight:600}
+#tip .r{font-family:"IBM Plex Mono",monospace;font-size:11.5px}
+footer{color:var(--muted);font-size:13px;max-width:80ch}
+footer code{font-family:"IBM Plex Mono",monospace;font-size:12px}
+@media (max-width:560px){h1{font-size:22px}.gantt{grid-template-columns:72px minmax(0,1fr)}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>CP-SAT Line Scheduler</h1>
+      <p class="sub">Weekly plans for the 4-system, 18-tank, 7-line plant. The v49 greedy heuristic sets the starting plan, then OR-Tools CP-SAT improves it. Every plan shown has been checked by the independent rule checker.</p>
+    </div>
+    <div class="controls">
+      <label class="lbl" for="week">Week</label>
+      <select id="week"></select>
+      <div class="seg" id="mode" role="group" aria-label="Plan shown">
+        <button data-v="cpsat">CP-SAT</button><button data-v="v49">v49 heuristic</button><button data-v="both">Compare</button>
+      </div>
+      <div class="seg" id="zoom" role="group" aria-label="Zoom">
+        <button data-v="5">−</button><button data-v="9">1×</button><button data-v="16">+</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Plan scores, CP-SAT against v49"></section>
+  <div class="meta" id="meta"></div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--cat-a)"></i>Category A</span>
+    <span><i class="sw" style="background:var(--cat-b)"></i>Category B</span>
+    <span><i class="sw" style="background:var(--cat-c)"></i>Category C</span>
+    <span><i class="sw" style="background:var(--cip)"></i>Tank CIP</span>
+    <span><i class="sw" style="background:var(--wash)"></i>Line wash / pack change</span>
+    <span><i class="sw" style="background:var(--held)"></i>Tank held until filled (H4)</span>
+    <span><i class="sw" style="background:transparent;outline:2px solid var(--down);outline-offset:-2px"></i>Fill over hold limit (P3)</span>
+    <span><i class="sw" style="background:var(--down-soft)"></i>Planned stop (H14)</span>
+    <span><i class="sw" style="border-left:2px dashed var(--accent);border-radius:0"></i>120 h week limit (P0)</span>
+  </div>
+  <div id="charts" style="display:flex;flex-direction:column;gap:18px"></div>
+  <footer id="foot"></footer>
+</div>
+<div id="tip" hidden></div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(() => {
+const WEEKS = JSON.parse(document.getElementById('data').textContent);
+const SYS = {1:['T1A','T1B','T1C','T1D'],2:['T2A','T2B','T2C','T2D'],3:['T3A','T3B','T3C','T3D','T3E'],4:['T4A','T4B','T4C','T4D','T4E']};
+const LINES = ['F1','F2','F3','F4','F5','F6','F7'];
+const WEEK = 120, ROW = 22, GRP = 20, AXIS = 26, TRIO_LEAD = 2;
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const store = { get(k,d){ try{ const v = localStorage.getItem('lsv2.'+k); return v===null?d:v }catch(e){ return d } },
+                set(k,v){ try{ localStorage.setItem('lsv2.'+k,v) }catch(e){} } };
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clock = h => { const t = 7 + h, d = Math.floor(t/24), m = Math.round((t - d*24)*60);
+  const hh = Math.floor(m/60), mm = m%60; return `${DAYS[((d%7)+7)%7]}${d>=7?' wk2':''} ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}` };
+const hrs = h => (Math.round(h*100)/100) + ' h';
+const catVar = c => ({A:'--cat-a',B:'--cat-b',C:'--cat-c'}[c] || '--cat-x');
+
+let state = { week: +store.get('week', 0), mode: store.get('mode','cpsat'), px: +store.get('px', 9) };
+if (!(state.week >= 0 && state.week < WEEKS.length)) state.week = 0;
+
+// Week picker, smallest weeks first
+const order = WEEKS.map((w,i)=>i).sort((a,b)=>WEEKS[a].pos-WEEKS[b].pos || WEEKS[a].seed-WEEKS[b].seed);
+$('#week').innerHTML = order.map(i => `<option value="${i}">${WEEKS[i].pos} POs · seed ${WEEKS[i].seed}</option>`).join('');
+
+function derive(w, eng){
+  const P = w.plant, sch = w.engines[eng].schedule;
+  const sb = Object.fromEntries(sch.batches.map(b=>[b.id,b])), sf = Object.fromEntries(sch.fills.map(f=>[f.id,f]));
+  const pb = Object.fromEntries(P.batches.map(b=>[b.id,b]));
+  const trios = {}; P.batches.forEach(b => { if (b.trioId) (trios[b.trioId] ||= []).push(b.id) });
+  const group = id => pb[id].trioId ? trios[pb[id].trioId] : [id];
+  const info = {}, over = new Set(), release = {};
+  P.fills.forEach(f => {
+    const ms = group(f.batchId), ends = ms.map(m=>sb[m].end), last = ends[ends.length-1];
+    const ready = ms.length>1 ? Math.max(ends[0], last - Math.min(TRIO_LEAD, f.duration)) : ends[0];
+    const due = last + f.holdMax, t = sf[f.id];
+    info[f.id] = {ready, due, wait: t.start - ready};
+    if (t.end > due + 1e-6) over.add(f.id);
+    ms.forEach(m => release[m] = Math.max(release[m] ?? sb[m].end, t.end));
+  });
+  return {sb, sf, pb, info, over, release, group};
+}
+
+function rows(){
+  const r = [];
+  for (const s of [1,2,3,4]){ r.push({grp:`System ${s}`}); SYS[s].forEach(t=>r.push({tank:t})) }
+  r.push({grp:'Fill lines'}); LINES.forEach(l=>r.push({line:l}));
+  let y = AXIS; r.forEach(x => { x.y = y; x.h = x.grp ? GRP : ROW; y += x.h }); return {r, H: y + 6};
+}
+
+function gantt(w, eng, idx){
+  const d = derive(w, eng), sch = w.engines[eng].schedule, P = w.plant;
+  const end = Math.max(WEEK, ...sch.batches.map(b=>Math.max(b.end, b.cipEnd||0, d.release[b.id])), ...sch.fills.map(f=>f.end));
+  const span = Math.ceil((end + 4)/12)*12, px = state.px, W = span*px + 8;
+  const {r, H} = rows(); const yOf = {}; r.forEach(x => { if (x.tank) yOf[x.tank]=x; if (x.line) yOf[x.line]=x });
+  const X = h => 4 + h*px, pf = Object.fromEntries(P.fills.map(f=>[f.id,f]));
+  const o = [];
+  o.push(`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${eng} Gantt">`);
+  o.push(`<defs><pattern id="hatch${idx}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--down-soft)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--down)" stroke-width="1.2" opacity=".5"/></pattern></defs>`);
+  r.forEach((x,i) => { if (x.grp) o.push(`<rect x="0" y="${x.y}" width="${W}" height="${x.h}" fill="var(--row)"/>`) });
+  o.push(`<rect x="${X(WEEK)}" y="${AXIS}" width="${W-X(WEEK)}" height="${H-AXIS}" fill="var(--grid)" opacity=".45"/>`);
+  for (let h=0; h<=span; h+=6){
+    const day = h%24===0;
+    o.push(`<line x1="${X(h)}" y1="${day?4:AXIS-6}" x2="${X(h)}" y2="${H}" stroke="var(--grid)" stroke-width="${day?1.2:1}"/>`);
+    if (day) o.push(`<text x="${X(h)+4}" y="15" font-size="11" fill="var(--muted)">${clock(h)} · ${h}h</text>`);
+  }
+  // planned stops on lines (H14)
+  w.downtime.forEach(dt => { const y = yOf[dt.line]; if (!y) return;
+    o.push(`<rect data-k="d:${esc(dt.id)}" x="${X(dt.start)}" y="${y.y}" width="${(dt.end-dt.start)*px}" height="${y.h}" fill="url(#hatch${idx})"/>`) });
+  // tanks: held, CIP, batch
+  sch.batches.forEach(b => { const y = yOf[b.tank], pb = d.pb[b.id], rel = d.release[b.id];
+    if (rel > b.end) o.push(`<rect data-k="h:${b.id}" x="${X(b.end)}" y="${y.y+5}" width="${(rel-b.end)*px}" height="${y.h-10}" fill="var(--held)" rx="2"/>`);
+    if (b.cipStart!=null) o.push(`<rect data-k="c:${b.id}" x="${X(b.cipStart)}" y="${y.y+4}" width="${Math.max(1,(b.cipEnd-b.cipStart)*px)}" height="${y.h-8}" fill="var(--cip)" rx="2"/>`);
+    const bw = (b.end-b.start)*px;
+    o.push(`<rect data-k="b:${b.id}" x="${X(b.start)}" y="${y.y+3}" width="${Math.max(1,bw-0.5)}" height="${y.h-6}" fill="var(${catVar(pb.category)})" rx="2"/>`);
+    if (pb.trioId) o.push(`<rect x="${X(b.start)}" y="${y.y+3}" width="3" height="${y.h-6}" fill="var(--fg)" opacity=".55" pointer-events="none"/>`);
+    if (bw > 58) o.push(`<text x="${X(b.start)+(pb.trioId?6:4)}" y="${y.y+15}" font-size="10" fill="var(--bar-fg)" pointer-events="none">${b.id.replace('BPO-','')}</text>`);
+  });
+  // fill lines: wash, fill
+  sch.fills.forEach(f => { const y = yOf[f.line], fp = pf[f.id];
+    if (f.washStart!=null && f.washEnd>f.washStart) o.push(`<rect data-k="w:${f.id}" x="${X(f.washStart)}" y="${y.y+4}" width="${Math.max(1,(f.washEnd-f.washStart)*px)}" height="${y.h-8}" fill="var(--wash)" rx="2"/>`);
+    const fw = (f.end-f.start)*px, late = d.over.has(f.id);
+    o.push(`<rect data-k="f:${f.id}" x="${X(f.start)}" y="${y.y+3}" width="${Math.max(1,fw-0.5)}" height="${y.h-6}" fill="var(${catVar(fp.category)})" rx="2" ${late?'stroke="var(--down)" stroke-width="2.5"':''}/>`);
+    if (fw > 58) o.push(`<text x="${X(f.start)+4}" y="${y.y+15}" font-size="10" fill="var(--bar-fg)" pointer-events="none">${f.id.replace('FPO-','')}</text>`);
+  });
+  o.push(`<line x1="${X(WEEK)}" y1="4" x2="${X(WEEK)}" y2="${H}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="5 4"/>`);
+  o.push(`<text x="${X(WEEK)-4}" y="${AXIS-2}" font-size="10" fill="var(--accent)" text-anchor="end">week limit</text>`);
+  o.push('</svg>');
+  const labels = `<div style="height:${AXIS}px"></div>` + r.map(x => `<div class="${x.grp?'grp':'mono'}" style="height:${x.h}px">${x.grp||x.tank||x.line}</div>`).join('');
+  const m = w.engines[eng].metrics;
+  const title = eng==='cpsat' ? 'CP-SAT plan' : 'v49 heuristic plan';
+  return {html:`<section class="chart" data-eng="${eng}"><h2>${title} <small class="num">${m.pos_in_week_limit}/${m.batch_pos} POs in week limit · ${m.fills_over_hold_limit} over hold limit · ends ${clock(m.makespan)} (${hrs(m.makespan)})</small></h2>
+    <div class="gantt"><div class="labels">${labels}</div><div class="scroll">${o.join('')}</div></div></section>`, d};
+}
+
+const KPI = [
+  ['pos_in_week_limit','POs in week limit','P0', +1, (v,m)=>`${v}<span class="old">/${m.batch_pos}</span>`],
+  ['fills_over_hold_limit','Fills over hold limit','P3', -1, v=>v],
+  ['makespan','Plan ends','P4', -1, v=>hrs(v)],
+  ['fill_wait_h','Fill wait','P6', -1, v=>hrs(v)],
+  ['cip_h','CIP and wash','P6', -1, v=>hrs(v)],
+];
+function kpis(w){
+  const a = w.engines.cpsat.metrics, b = w.engines.v49.metrics;
+  $('#kpis').innerHTML = KPI.map(([k,label,rule,dir,fmt]) => {
+    const diff = a[k]-b[k], cls = Math.abs(diff)<1e-9 ? 'same' : (diff*dir>0 ? 'good':'bad');
+    const dtxt = Math.abs(diff)<1e-9 ? 'same as v49' : `${diff>0?'+':'−'}${Math.round(Math.abs(diff)*100)/100}${k==='pos_in_week_limit'||k==='fills_over_hold_limit'?'':' h'} vs v49`;
+    return `<div class="kpi"><div class="lbl">${label}<span class="rule">${rule}</span></div>
+      <div class="vals"><span class="big num">${fmt(a[k],a)}</span><span class="old num">v49 ${String(fmt(b[k],b)).replace(/<[^>]+>/g,'')}</span></div>
+      <div class="d num ${cls}">${dtxt}</div></div>`}).join('');
+  const pill = (e,lab) => `<span class="pill"><i style="background:var(${w.engines[e].valid?'--good':'--bad'})"></i>${lab}: ${w.engines[e].valid?'all hard rules pass':'rule breaks found'}</span>`;
+  const trios = new Set(w.plant.batches.filter(b=>b.trioId).map(b=>b.trioId)).size;
+  $('#meta').innerHTML = `${pill('cpsat','CP-SAT')}${pill('v49','v49')}<span class="num">${w.plant.batches.length} batches · ${w.plant.fills.length} fills · ${trios} System 1 trios</span><span class="num">optimised in ${Math.round(w.seconds)} s (limit ${w.timeLimit} s, 4 cores)</span>`;
+}
+
+let derived = {};
+function render(){
+  const w = WEEKS[state.week];
+  $('#week').value = state.week;
+  document.querySelectorAll('#mode button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.v===state.mode));
+  document.querySelectorAll('#zoom button').forEach(b=>b.setAttribute('aria-pressed', +b.dataset.v===state.px));
+  kpis(w);
+  const engs = state.mode==='both' ? ['cpsat','v49'] : [state.mode];
+  derived = {};
+  $('#charts').innerHTML = engs.map((e,i) => { const g = gantt(w,e,i); derived[e] = g.d; return g.html }).join('');
+}
+
+function tipHtml(eng, key){
+  const w = WEEKS[state.week], d = derived[eng], [t,id] = [key.slice(0,1), key.slice(2)];
+  const P = w.plant;
+  if (t==='d'){ const x = w.downtime.find(z=>z.id===id); return `<b>${esc(x.reason)}</b> · ${x.line}<br>${clock(x.start)} to ${clock(x.end)}<br><span class="r">H14 no filling or washing</span>` }
+  if ('bhc'.includes(t)){ const b = d.sb[id], p = d.pb[id];
+    const head = `<b>${id}</b> · ${esc(p.productName)} <span class="r">(${p.sku}, cat ${p.category})</span><br>Tank ${b.tank}, System ${p.system}${p.trioId?` · trio ${p.trioId}`:''}<br>`;
+    if (t==='b') return head + `Makes ${clock(b.start)} to ${clock(b.end)} (${hrs(b.end-b.start)})<br>${p.volumeL.toLocaleString()} L · fills ${p.fillIds.join(', ')||'(trio carrier)'}`;
+    if (t==='h') return head + `Held full from ${clock(b.end)} to ${clock(d.release[id])}<br><span class="r">H4 tank held until its fills are done</span>`;
+    return head + `${b.cipRule||''} CIP ${clock(b.cipStart)} to ${clock(b.cipEnd)} (${hrs(b.cipEnd-b.cipStart)})`; }
+  const f = d.sf[id], p = P.fills.find(z=>z.id===id), i = d.info[id];
+  if (t==='w') return `<b>Wash / pack change</b> on ${f.line} before ${id}<br>${clock(f.washStart)} to ${clock(f.washEnd)} (${hrs(f.washEnd-f.washStart)})`;
+  return `<b>${id}</b> · ${esc(p.productName)} <span class="r">(${p.sku}, cat ${p.category})</span><br>${f.line} · ${esc(p.format)} · ${p.units} units<br>Fills ${clock(f.start)} to ${clock(f.end)} (${hrs(f.end-f.start)})<br>From ${p.batchId} · ready ${clock(i.ready)} · waited ${hrs(i.wait)}<br>Hold limit ${p.holdMax} h, due by ${clock(i.due)}${d.over.has(id)?' <b style="color:var(--down)">· over by '+hrs(f.end-i.due)+' (P3)</b>':''}`;
+}
+const tip = $('#tip');
+function showTip(ev){
+  const el = ev.target.closest && ev.target.closest('[data-k]');
+  if (!el){ tip.hidden = true; return }
+  const eng = el.closest('[data-eng]').dataset.eng;
+  tip.innerHTML = tipHtml(eng, el.dataset.k); tip.hidden = false;
+  const r = tip.getBoundingClientRect(), vw = innerWidth, vh = innerHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + r.width > vw - 8) x = Math.max(8, ev.clientX - r.width - 14);
+  if (y + r.height > vh - 8) y = Math.max(8, ev.clientY - r.height - 14);
+  tip.style.left = x+'px'; tip.style.top = y+'px';
+}
+$('#charts').addEventListener('pointermove', showTip);
+$('#charts').addEventListener('click', showTip);
+$('#charts').addEventListener('pointerleave', ()=>tip.hidden = true);
+addEventListener('scroll', ()=>tip.hidden = true, {passive:true});
+
+$('#week').addEventListener('change', e => { state.week = +e.target.value; store.set('week', state.week); render() });
+$('#mode').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return; state.mode = v; store.set('mode', v); render() });
+$('#zoom').addEventListener('click', e => { const v = +e.target.dataset.v; if (!v) return; state.px = v; store.set('px', v); render() });
+
+$('#foot').innerHTML = `Schedules were worked out ahead of time by the Python optimiser (v0.2.0: v49 heuristic port, then CP-SAT, then the rule checker); this page only displays them. Hour 0 is Mon 07:00. Weeks come from the v49 generator with the seed shown, so the same seed gives the same orders as the prototype. Priority order: P2, P0, P1, P3, P4, P6. Plans that end past ${WEEK} h at 200 POs are mostly held back by F7's cap of 3 fills per week, which is still an open rule question.`;
+render();
+})();
+</script>
