@@ -41,3 +41,16 @@ def test_cpsat_priority_target_window():
     start = next(t.start for t in sch.fills if t.id == f.id)
     assert abs(start - 30.0) <= 6.0
     assert validate(plant, sch, DT).ok
+
+
+def test_three_fill_trio_week_is_valid():
+    """H8: CP-SAT plans a week whose trios have 3 fill POs, one at a time, without breaking a hard rule."""
+    from scheduler.generator import generate_plant
+    from scheduler.optimise import optimise
+    from scheduler.plant import default_maintenance
+    from scheduler.validate import validate
+    dt = default_maintenance()
+    plant = next(p for p in (generate_plant(s, 30) for s in range(1, 40))
+                 if any(b.trio_id and len(b.fill_ids) == 3 for b in p.batches))
+    best, _ = optimise(plant, dt, Settings(time_limit=20))
+    assert validate(plant, best, dt).ok

@@ -314,7 +314,9 @@ function critical(d){
     if (cur.k === 'f'){
       const f = cur.t, i = info[f.id], arr = byLine[f.line], pos = arr.indexOf(f), prev = arr[pos-1];
       const gate = f.washStart!=null ? f.washStart : f.start;
-      if (Math.abs(f.start - i.ready) < E){ next = {k:'b', t: sb[i.by]}; step.bound = group(d.pf[f.id].batchId).length>1 ? 'Waits on trio batches (H8)' : 'Waits on parent batch (H3)' }
+      const sib = (d.fillsOf[group(d.pf[f.id].batchId)[0]]||[]).map(id=>sf[id]).find(x => x.id!==f.id && Math.abs(x.end - f.start) < E);
+      if (sib && group(d.pf[f.id].batchId).length > 1){ next = {k:'f', t: sib}; step.bound = 'Trio fills run one at a time (H8)' }
+      else if (Math.abs(f.start - i.ready) < E){ next = {k:'b', t: sb[i.by]}; step.bound = group(d.pf[f.id].batchId).length>1 ? 'Waits on trio batches (H8)' : 'Waits on parent batch (H3)' }
       else if (prev && Math.abs(prev.end - gate) < E){ next = {k:'f', t: prev}; step.bound = f.washStart!=null ? `Waits on ${f.line}, then ${(d.washRule[f.id]||'').replace('+pack',' + pack change')} wash` : `Waits on ${f.line}` }
       else if (stopAt(f.line, gate) || stopAt(f.line, f.start)){ step.bound = `Waits on planned stop on ${f.line} (H14)`; next = prev ? {k:'f', t: prev} : null }
       else if (f7Blocked(f)) step.bound = F7MSG;

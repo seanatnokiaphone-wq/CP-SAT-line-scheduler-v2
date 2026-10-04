@@ -225,6 +225,7 @@ def schedule_plant(plant: Plant, params: dict) -> dict:
         dirty[t["system"]] = None
 
     chain_next = {}
+    trio_last_end = {}  # trio's first batch id -> end of its 3rd batch
 
     def commit_group(choice):
         g, pls = choice["group"], choice["placements"]
@@ -238,6 +239,7 @@ def schedule_plant(plant: Plant, params: dict) -> dict:
         for i in range(1, len(chain)):
             chain_next[chain[i - 1]["id"]] = chain[i]
         head = chain[0]
+        trio_last_end[head["batch_id"]] = last_end
         first_end = next(x for x in batches if x["id"] == g["members"][0]["id"])["end"]
         released.append({**head, "ready": open_at(head, max(first_end, last_end - min(TRIO_FILL_LEAD, head["duration"]))),
                          "due": last_end + head["hold_max"], "chain": g["id"], "chainPos": 1})
@@ -502,10 +504,12 @@ def schedule_plant(plant: Plant, params: dict) -> dict:
                 r["ready"] = rec["end"]
         nxt = chain_next.get(f["id"])
         if nxt:
-            parent_end = next(x for x in batches if x["id"] == nxt["batch_id"])["end"]
-            released.append({**nxt, "ready": open_at(nxt, max(parent_end - min(TRIO_FILL_LEAD, nxt["duration"]),
-                                                              rec["end"] - TRIO_FILL_LEAD)),
-                             "due": parent_end + nxt["hold_max"], "chain": f["chain"], "chainPos": f["chainPos"] + 1})
+            # H8/H19 (Sean, 2026-10-04): a trio's fills run one at a time, so the next starts when this one
+            # ends; all of them may start 2h before the 3rd batch ends and count the hold limit from it.
+            trio_last = trio_last_end.get(nxt["batch_id"], next(x for x in batches if x["id"] == nxt["batch_id"])["end"])
+            released.append({**nxt, "ready": open_at(nxt, max(trio_last - min(TRIO_FILL_LEAD, nxt["duration"]),
+                                                              rec["end"])),
+                             "due": trio_last + nxt["hold_max"], "chain": f["chain"], "chainPos": f["chainPos"] + 1})
         fills_left[f["batch_id"]] -= 1
         if fills_left[f["batch_id"]] == 0 and hold_tank:  # H4
             done = max(x["end"] for x in fills if x["batch_id"] == f["batch_id"])

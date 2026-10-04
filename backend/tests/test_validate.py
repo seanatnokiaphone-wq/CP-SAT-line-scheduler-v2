@@ -178,3 +178,34 @@ def test_H19_two_fills_of_one_batch_at_once():
     d = c.end - c.start
     c.start, c.end = a.start, a.start + d
     assert "H19" in rules(plant, sch)
+
+
+def test_H8_trio_fill_count_and_one_at_a_time():
+    """H8 (Sean, 2026-10-04 19:24 UTC): a trio takes 1 or 3 fill POs, filled one at a time (H19)."""
+    from scheduler.generator import generate_plant
+    from scheduler.heuristic import best_heuristic
+    from scheduler.plant import default_maintenance
+    dt = default_maintenance()
+    plant = next(p for p in (generate_plant(s, 40) for s in range(1, 40))
+                 if any(len(b.fill_ids) == 3 and b.trio_id for b in plant_batches(p)))
+    sch = best_heuristic(plant, dt)
+    assert validate(plant, sch, dt).ok
+    carrier = next(b for b in plant.batches if b.trio_id and len(b.fill_ids) == 3)
+    sf = {t.id: t for t in sch.fills}
+    a, c = sf[carrier.fill_ids[0]], sf[carrier.fill_ids[1]]
+    assert a.end <= c.start + 1e-6 or c.end <= a.start + 1e-6
+    bad = sch.model_copy(deep=True)
+    t = next(x for x in bad.fills if x.id == c.id)
+    t.start, t.end = a.start, a.start + (c.end - c.start)  # two trio fills at once
+    assert "H19" in rules(plant, bad, dt)
+    two = plant.model_copy(deep=True)
+    cb = next(b for b in two.batches if b.id == carrier.id)
+    drop = cb.fill_ids.pop()
+    two.fills = [f for f in two.fills if f.id != drop]
+    sch2 = sch.model_copy(deep=True)
+    sch2.fills = [f for f in sch2.fills if f.id != drop]
+    assert "H8" in rules(two, sch2, dt)
+
+
+def plant_batches(p):
+    return p.batches

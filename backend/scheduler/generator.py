@@ -23,6 +23,9 @@ NAME_POOLS = {
 C_ALLERGENS = ["Peanut", "Tree nut", "Tree nut", "Milk", "Soy", "Tree nut", "Milk", "Egg", "Sesame",
                "Tree nut", "Milk", "Tree nut"]
 DEFAULT_DOUBLE_FILL = {1: 20, 2: 20, 3: 20, 4: 20}
+# H8 (Sean, 2026-10-04 19:24 UTC): a trio is filled by 1 or 3 fill POs. Share of trios drawn with 3
+# (default by Claude). 0 gives v49's weeks exactly (one fill per trio), which the parity tests use.
+TRIO_THREE_FILL_PCT = 25
 
 
 def _num(x: float):
@@ -32,7 +35,8 @@ def _num(x: float):
 
 def generate_plant(seed: int, batch_count: int, fill_min=0.5, fill_max=3.0, batch_min=3, batch_max=6, *,
                    capacity: Optional[dict] = None, hold_range=(6, 12), double_fill: Optional[dict] = None,
-                   trio_pct=60, mix: Optional[dict] = None, run_times: Optional[dict] = None) -> Plant:
+                   trio_pct=60, mix: Optional[dict] = None, run_times: Optional[dict] = None,
+                   trio_three_fill_pct=TRIO_THREE_FILL_PCT) -> Plant:
     capacity = {int(k): v for k, v in (capacity or DEFAULT_CAPACITY).items()}
     double_fill = {int(k): v for k, v in (double_fill or DEFAULT_DOUBLE_FILL).items()}
     run_times = {int(k): v for k, v in (run_times or {}).items()}
@@ -144,7 +148,11 @@ def generate_plant(seed: int, batch_count: int, fill_min=0.5, fill_max=3.0, batc
         if not trio_last:
             n_fills = 0
         else:
-            n_fills = 2 if (rng() * 100 < double_fill.get(system, 20) and not trio_id) else 1
+            draw = rng() * 100  # one draw either way, so weeks without 3-fill trios match v49
+            if trio_id:
+                n_fills = 3 if draw < trio_three_fill_pct else 1  # H8: 1 or 3 fills per trio
+            else:
+                n_fills = 2 if draw < double_fill.get(system, 20) else 1
         for _ in range(n_fills):
             f_lo, f_hi = fill_span(system)
             f_dur = f_lo + 0.5 * rand_int(0, js_round((f_hi - f_lo) * 2))

@@ -117,6 +117,9 @@ def validate(plant: Plant, sch: Schedule, downtime: list[Downtime], *, cip_mult:
                 if _overlap(sf[a.id].start, sf[a.id].end, sf[c.id].start, sf[c.id].end):
                     bad("H19", [a.id, c.id], f"{a.id} and {c.id} of {bid} fill at the same time")
     for tid, ms in trios.items():
+        n = len(fills_of.get(ms[0].id, []))
+        if len(ms) == 3 and n not in (1, 3):  # H8: a trio is filled by 1 or 3 fill POs, one at a time (H19)
+            bad("H8", [m.id for m in ms], f"{tid} has {n} fill POs; a trio takes 1 or 3")
         s = [sb[m.id].start for m in ms]
         for j in range(1, len(s)):
             if abs(s[j] - s[0] - j * TRIO_STAGGER) > TOL:

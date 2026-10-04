@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-10-04)
+- Rule H8 changed (Sean, 19:24 UTC): a System 1 trio is filled by 1 or 3 fill POs, one at a time, together emptying all three tanks in possibly different quantities. Recorded in `RULES.md`.
+- Generator: `trio_three_fill_pct` (default 25, by Claude) draws 3-fill trios; 0 reproduces v49 weeks exactly (parity tests use it).
+- Rule checker flags a trio with a fill count other than 1 or 3 (H8); overlapping trio fills were already H19.
+- v49 heuristic port: the next fill of a trio now starts when the previous one ends (was 2h overlap) and counts its hold limit from the 3rd batch.
+- CP-SAT model unchanged: its H8 timing, H19 no-overlap and H4 hold already cover several fills per trio.
+- Viewer: weeks re-exported with 3-fill trios; critical path names "Trio fills run one at a time (H8)".
+
 ## Base Project (2026-10-04)
 - Snapshot of v0.2.2 saved as the Base Project: generator, rule checker, v49 heuristic port, CP-SAT optimiser and the schedule viewer. Branch `base-project` on GitHub points here.
 

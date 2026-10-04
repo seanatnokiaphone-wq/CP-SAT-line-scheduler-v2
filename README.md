@@ -28,3 +28,5 @@ Golden weeks (`backend/tests/golden`) come from v49's own engine: `cd tools/v49-
 - `backend/scheduler/heuristic.py` v49 dispatch heuristic and strategy search, ported
 - `backend/scheduler/optimise.py` heuristic + CP-SAT + validator in one call
 - `backend/scheduler/v49.py` loads v49 heuristic schedules (warm start and baseline)
+
+Rule changes since v49 are recorded in `RULES.md`.
