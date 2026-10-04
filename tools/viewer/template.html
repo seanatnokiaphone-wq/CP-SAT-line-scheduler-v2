@@ -171,6 +171,7 @@ footer{color:var(--muted);font-size:13px;max-width:80ch}
       <button class="tb" id="tips" title="Shows a details card when you hover a block">Hover info</button>
       <div class="seg" id="links" role="group" aria-label="Batch-to-fill links"><button data-v="all">All links</button><button data-v="hover">Links on hover</button></div>
       <div class="seg" id="win" role="group" aria-label="Time window"><button data-v="window">Week limit (120h)</button><button data-v="plan">Plan only</button></div>
+      <div class="seg" id="labels" role="group" aria-label="PO labels on the bars"><button data-v="off">Labels off</button><button data-v="po">PO</button><button data-v="sku">PO + SKU</button></div>
       <div class="seg" id="zoom" role="group" aria-label="Zoom"><button data-v="out" aria-label="Zoom out">−</button><button data-v="fit">Fit</button><button data-v="in" aria-label="Zoom in">+</button></div>
     </div>
     <div class="bar">
@@ -237,7 +238,7 @@ const cipRule = (pSku,pCat,sku,cat) => pSku===sku ? 'minor' : (pCat!=='A' && cat
 const S = {
   week: store.get('week', 0), mode: store.get('mode','cpsat'), tab: store.get('tab','gantt'),
   zoom: store.get('zoom','fit'), linkMode: store.get('linkMode', null), tips: store.get('tips', true),
-  crit: store.get('crit', false), win: store.get('win','window'),
+  crit: store.get('crit', false), labels: store.get('labels','po'), win: store.get('win','window'),
   hidden: new Set(store.get('hidden', [])), collapsed: new Set(store.get('collapsed', [])),
   hl: new Set(store.get('hl', [])), hlLinks: store.get('hlLinks', false), multi: store.get('multi', false),
   strip: store.get('strip', false), top: store.get('top', false),
@@ -412,6 +413,10 @@ function gantt(d, idx, span, px){
     if (critSet && !critSet.has(id)) o = Math.min(o, .45);
     return o };
   const colour = (cat, sys) => hlOn && S.hl.has(sys) ? `var(--sys-${sys})` : `var(${catVar(cat)})`;
+  // PO data overlay on the bars: off, PO number, or PO number + SKU, cut to fit the bar
+  const label = (id, p, room) => { if (S.labels === 'off') return '';
+    const n = id.replace(/^[BF]PO-/,''), full = `${n} ${p.sku}`, fit = Math.floor(room / 6.1);
+    return S.labels === 'sku' && full.length <= fit ? esc(full) : n.length <= fit ? n : '' };
   const o = [];
   o.push(`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" data-svg="${idx}" role="img" aria-label="${d.eng} Gantt" class="${S.linkMode==='hover'?'hoveronly':''}">`);
   const hatch = (id, bg, fg) => `<pattern id="${id}${idx}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="${bg}"/><line x1="0" y1="0" x2="0" y2="6" stroke="${fg}" stroke-width="2"/></pattern>`;
@@ -441,14 +446,14 @@ function gantt(d, idx, span, px){
     const bw = (b.end-b.start)*px, crit = critSet && critSet.has(b.id);
     o.push(`<rect data-id="${b.id}" data-k="b:${b.id}" x="${X(b.start)}" y="${y.y+2}" width="${Math.max(1,bw-0.5)}" height="${y.h-4}" fill="${colour(p.category,p.system)}" rx="2" opacity="${op}" ${crit?'stroke="var(--crit)" stroke-width="2.5"':''}/>`);
     if (p.trioId) o.push(`<rect x="${X(b.start)}" y="${y.y+2}" width="3" height="${y.h-4}" fill="var(--fg)" opacity="${.5*op}" pointer-events="none"/>`);
-    if (bw > 58 && !y.sum) o.push(`<text x="${X(b.start)+(p.trioId?6:4)}" y="${y.y+14}" font-size="10" fill="var(--bar-fg)" pointer-events="none" opacity="${op}">${b.id.replace('BPO-','')}</text>`);
+    const lb = label(b.id, p, bw - (p.trioId?8:6)); if (lb && !y.sum) o.push(`<text x="${X(b.start)+(p.trioId?6:4)}" y="${y.y+14}" font-size="10" fill="var(--bar-fg)" pointer-events="none" opacity="${op}">${lb}</text>`);
   });
   // fill lines: wash, fill
   sch.fills.forEach(f => { const y = pos[f.line]; if (!y) return; const p = pf[f.id], op = fade(f.id, p.system);
     if (f.washStart!=null && f.washEnd>f.washStart) o.push(`<rect data-id="${f.id}" data-k="w:${f.id}" x="${X(f.washStart)}" y="${y.y+3}" width="${Math.max(1,(f.washEnd-f.washStart)*px)}" height="${y.h-6}" fill="${cipFill((d.washRule[f.id]||'').split('+')[0])}" stroke="var(--line)" rx="2" opacity="${op}"/>`);
     const fw = (f.end-f.start)*px, late = d.over.has(f.id), crit = critSet && critSet.has(f.id);
     o.push(`<rect data-id="${f.id}" data-k="f:${f.id}" x="${X(f.start)}" y="${y.y+2}" width="${Math.max(1,fw-0.5)}" height="${y.h-4}" fill="${colour(p.category,p.system)}" rx="2" opacity="${op}" ${crit?'stroke="var(--crit)" stroke-width="2.5"':late?'stroke="var(--down)" stroke-width="2.5"':''}/>`);
-    if (fw > 58 && !y.sum) o.push(`<text x="${X(f.start)+4}" y="${y.y+14}" font-size="10" fill="var(--bar-fg)" pointer-events="none" opacity="${op}">${f.id.replace('FPO-','')}</text>`);
+    const lf = label(f.id, p, fw - 6); if (lf && !y.sum) o.push(`<text x="${X(f.start)+4}" y="${y.y+14}" font-size="10" fill="var(--bar-fg)" pointer-events="none" opacity="${op}">${lf}</text>`);
   });
   // batch-to-fill links (H2): one from each tank the fill empties
   sch.fills.forEach(f => { const yl = pos[f.line]; if (!yl) return; const p = pf[f.id];
@@ -514,7 +519,7 @@ function renderToolbar(){
   const w = WEEKS[S.week];
   if (S.linkMode === null) S.linkMode = w.plant.fills.length > 80 ? 'hover' : 'all';
   const pressed = (sel, v) => document.querySelectorAll(sel+' button').forEach(b => b.setAttribute('aria-pressed', b.dataset.v===v));
-  pressed('#links', S.linkMode); pressed('#win', S.win); pressed('#zoom', S.zoom==='fit'?'fit':'');
+  pressed('#links', S.linkMode); pressed('#labels', S.labels); pressed('#win', S.win); pressed('#zoom', S.zoom==='fit'?'fit':'');
   $('#crit').setAttribute('aria-pressed', S.crit); $('#tips').setAttribute('aria-pressed', S.tips);
   $('#tips').textContent = S.tips ? 'Hover info on' : 'Hover info off';
   $('#groups').innerHTML = [...SYSTEMS.map(s=>[String(s),`System ${s}`]), ['plant','Fill lines']].map(([g,l]) =>
@@ -752,6 +757,7 @@ document.querySelector('.tabs').addEventListener('click', e => { const v = e.tar
 $('#crit').addEventListener('click', () => { S.crit = !S.crit; save('crit'); renderToolbar(); renderGantt() });
 $('#tips').addEventListener('click', () => { S.tips = !S.tips; save('tips'); renderToolbar() });
 $('#links').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return; S.linkMode = v; save('linkMode'); renderToolbar(); renderGantt() });
+$('#labels').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return; S.labels = v; save('labels'); renderToolbar(); renderGantt() });
 $('#win').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return; S.win = v; save('win'); renderToolbar(); renderGantt() });
 $('#zoom').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return;
   const cur = pxFor(spanFor(engines()));

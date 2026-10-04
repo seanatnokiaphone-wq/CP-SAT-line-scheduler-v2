@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 (2026-10-04)
+- Viewer: Compare shows "Where the plans differ": the best plan (first priority that differs, P0, P3, P4, P6) and the top 3 differences with where they happen and the POs involved.
+- Viewer: PO labels on the bars: off, PO number, or PO number + SKU (from Sean's comment on the artifact).
+- Viewer weeks re-optimised with 3-fill trios (H8).
+
 ## 0.3.0 (2026-10-04)
 - Rule H8 changed (Sean, 19:24 UTC): a System 1 trio is filled by 1 or 3 fill POs, one at a time, together emptying all three tanks in possibly different quantities. Recorded in `RULES.md`.
 - Generator: `trio_three_fill_pct` (default 25, by Claude) draws 3-fill trios; 0 reproduces v49 weeks exactly (parity tests use it).
