@@ -127,6 +127,19 @@ svg [data-id].pin{stroke:var(--fg);stroke-width:1.5}
 .late{color:var(--bad);font-weight:600}
 .dash{color:var(--muted)}
 .hint{color:var(--muted);font-size:13px;margin:0}
+.diff{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.diff h2{font-size:17px;margin:0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.verdict{border-left:4px solid var(--accent);background:var(--accent-soft);padding:8px 12px;border-radius:4px;max-width:90ch}
+.diff ol{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.diff li{border:1px solid var(--line);border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.diff li .k{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.diff li .n{font-size:20px;font-weight:600}
+.win{font-size:12px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.win.cp{background:var(--accent);color:var(--bar-fg)}.win.v4{background:var(--cat-b);color:var(--bar-fg)}
+.diff p{margin:0;font-size:14px}
+.pos{display:flex;flex-wrap:wrap;gap:4px}
+.pos button{font:12px "IBM Plex Mono",monospace;border:1px solid var(--line);background:var(--bg);border-radius:4px;padding:1px 6px;cursor:pointer}
+.pos button:hover{border-color:var(--accent);color:var(--accent)}
 footer{color:var(--muted);font-size:13px;max-width:80ch}
 @media (max-width:560px){h1{font-size:22px}.gantt{grid-template-columns:72px minmax(0,1fr)}}
 </style>
@@ -172,6 +185,7 @@ footer{color:var(--muted);font-size:13px;max-width:80ch}
       <label class="tb" id="topL" title="Pins every tank's status at the hovered time to the top of the Gantt"><input type="checkbox" id="top">Tank status on top</label>
     </div>
     <div class="legend" id="legend"></div>
+    <section class="diff" id="diff" hidden aria-label="Where the plans differ"></section>
     <div class="statusbar" id="statusbar" hidden></div>
     <div id="charts" style="display:flex;flex-direction:column;gap:18px"></div>
     <p class="hint">Hover any block to trace its batch, CIP and fill linkages. Click to pin it, click empty space to clear. Click a system heading to collapse it.</p>
@@ -639,6 +653,89 @@ function scrollToTask(id){
   const r = el.getBoundingClientRect(); if (r.top < 80 || r.bottom > innerHeight - 20) scrollBy({top: r.top - innerHeight/3, behavior:'smooth'});
 }
 
+
+/* ---------- compare: top 3 differences and the better plan ---------- */
+function fitInfo(d){
+  const ids = new Set(), seen = new Set();
+  d.P.batches.forEach(b => { const g = d.group(b.id); if (seen.has(g[0])) return; g.forEach(m=>seen.add(m));
+    const fs = d.fillsOf[g[0]]||[], end = Math.max(...g.map(m=>d.sb[m].end), ...fs.map(f=>d.sf[f].end));
+    if (end <= WEEK + E && !fs.some(f => d.over.has(f))) g.forEach(m => ids.add(m)) });
+  return ids;
+}
+const sumBy = (items, key, val) => items.reduce((o,x) => (o[key(x)] = (o[key(x)]||0) + val(x), o), {});
+function biggest(a, b){ // key with the largest gap between two {key: hours} maps
+  const ks = new Set([...Object.keys(a), ...Object.keys(b)]); let best = null;
+  ks.forEach(k => { const g = (b[k]||0) - (a[k]||0); if (!best || Math.abs(g) > Math.abs(best.g)) best = {k, g, a: a[k]||0, b: b[k]||0} });
+  return best;
+}
+function renderDiff(){
+  const el = $('#diff'); el.hidden = S.mode !== 'both'; if (el.hidden) return;
+  const a = derive(S.week, 'cpsat'), b = derive(S.week, 'v49'), w = a.w, ma = w.engines.cpsat.metrics, mb = w.engines.v49.metrics;
+  const chips = ids => ids.length ? `<div class="pos">${ids.slice(0,10).map(id => `<button data-pin="${id}">${id}</button>`).join('')}${ids.length>10?`<span class="hint">+${ids.length-10} more</span>`:''}</div>` : '';
+  const items = [];
+  // P0: POs inside the week limit
+  const fa = fitInfo(a), fb = fitInfo(b), onlyA = [...fa].filter(x=>!fb.has(x)), onlyB = [...fb].filter(x=>!fa.has(x));
+  if (ma.pos_in_week_limit !== mb.pos_in_week_limit || onlyA.length || onlyB.length){
+    const bySys = ids => Object.entries(sumBy(ids, id=>a.pb[id].system, ()=>1)).sort((x,y)=>y[1]-x[1]).map(([s,n])=>`System ${s} (${n})`).join(', ');
+    const d = ma.pos_in_week_limit - mb.pos_in_week_limit;
+    items.push({rule:'P0', title:'POs finished inside the 120h week limit', win: d>0?'cpsat':d<0?'v49':null,
+      n:`${ma.pos_in_week_limit} vs ${mb.pos_in_week_limit}`,
+      text: `${onlyA.length ? `CP-SAT gets ${onlyA.length} POs done in the week that v49 does not, mostly ${bySys(onlyA)}.` : ''} ${onlyB.length ? `v49 gets ${onlyB.length} in that CP-SAT does not${onlyA.length?'':`, mostly ${bySys(onlyB)}`}.` : ''}`.trim(),
+      ids: (d >= 0 ? onlyA : onlyB)});
+  }
+  // P3: fills over their hold limit
+  if (ma.fills_over_hold_limit !== mb.fills_over_hold_limit){
+    const la = [...a.over], lb = [...b.over], d = ma.fills_over_hold_limit - mb.fills_over_hold_limit;
+    const worse = d < 0 ? b : a, worseIds = d < 0 ? lb : la;
+    const lines = Object.entries(sumBy(worseIds, id=>worse.sf[id].line, ()=>1)).sort((x,y)=>y[1]-x[1]).slice(0,3).map(([l,n])=>`${l} (${n})`).join(', ');
+    const lateH = ids => r2(ids.reduce((s,id) => s + (d<0?b:a).info[id].late, 0));
+    items.push({rule:'P3', title:'Fills that finish past their hold limit', win: d<0?'cpsat':'v49',
+      n:`${ma.fills_over_hold_limit} vs ${mb.fills_over_hold_limit}`,
+      text:`${d<0?'v49':'CP-SAT'} lets ${worseIds.length} fills run over the tank hold limit, by ${lateH(worseIds)}h in total, mostly on ${lines}. The tank sits full too long before it is emptied.`,
+      ids: worseIds});
+  }
+  // P4: plan end
+  if (Math.abs(ma.makespan - mb.makespan) > E){
+    const d = ma.makespan - mb.makespan, last = dd => { const x = [...dd.sch.batches, ...dd.sch.fills].reduce((p,q)=>q.end>p.end?q:p); return x };
+    const xa = last(a), xb = last(b);
+    items.push({rule:'P4', title:'When the whole plan finishes', win: d<0?'cpsat':'v49', n:`${hrs(ma.makespan)} vs ${hrs(mb.makespan)}`,
+      text:`CP-SAT ends ${clock(ma.makespan)} with ${xa.id}${xa.line?` on ${xa.line}`:''}; v49 ends ${clock(mb.makespan)} with ${xb.id}${xb.line?` on ${xb.line}`:''}. ${Math.abs(d)<1?'Under an hour apart.':`${hrs(Math.abs(d))} ${d<0?'earlier':'later'} with CP-SAT.`}`,
+      ids:[xa.id, xb.id].filter((x,i,arr)=>arr.indexOf(x)===i)});
+  }
+  // P6: fill wait, by line
+  if (Math.abs(ma.fill_wait_h - mb.fill_wait_h) > 0.5){
+    const wl = dd => sumBy(dd.sch.fills, f=>f.line, f=>dd.info[f.id].wait), g = biggest(wl(a), wl(b)), d = ma.fill_wait_h - mb.fill_wait_h;
+    const ids = (d<0 ? b : a).sch.fills.filter(f => f.line===g.k).sort((x,y)=>(d<0?b:a).info[y.id].wait-(d<0?b:a).info[x.id].wait).slice(0,6).map(f=>f.id);
+    items.push({rule:'P6', title:'Time full tanks wait for a fill line', win: d<0?'cpsat':'v49', n:`${hrs(ma.fill_wait_h)} vs ${hrs(mb.fill_wait_h)}`,
+      text:`The biggest gap is on ${g.k}: ${hrs(g.a)} of waiting with CP-SAT against ${hrs(g.b)} with v49. Less waiting means tanks are freed sooner for the next batch.`, ids});
+  }
+  // P6: CIP and wash hours
+  if (Math.abs(ma.cip_h - mb.cip_h) > 0.5){
+    const tk = dd => sumBy(dd.sch.batches.filter(x=>x.cipStart!=null), x=>`System ${dd.pb[x.id].system} tanks`, x=>x.cipEnd-x.cipStart);
+    const ln = dd => sumBy(dd.sch.fills.filter(x=>x.washStart!=null), x=>x.line, x=>x.washEnd-x.washStart);
+    const g = biggest({...tk(a), ...ln(a)}, {...tk(b), ...ln(b)}), d = ma.cip_h - mb.cip_h;
+    const deep = dd => dd.sch.batches.filter(x=>x.cipRule==='deep').length + Object.values(dd.washRule).filter(r=>r.startsWith('deep')).length;
+    items.push({rule:'P6', title:'Hours spent on CIP and line washes', win: d<0?'cpsat':'v49', n:`${hrs(ma.cip_h)} vs ${hrs(mb.cip_h)}`,
+      text:`Most of the gap is on ${g.k} (${hrs(g.a)} vs ${hrs(g.b)}). Deep CIPs: ${deep(a)} with CP-SAT, ${deep(b)} with v49; better product order means fewer of them.`, ids: []});
+  }
+  const top = items.slice(0,3);
+  // Verdict: the first priority level that differs decides (P2, P0, P3, P4, P6 wait, P6 CIP)
+  const levels = [['target_miss_h','P2','target misses',-1],['pos_in_week_limit','P0','POs in the week limit',1],['fills_over_hold_limit','P3','fills over the hold limit',-1],
+    ['makespan','P4','plan end',-1],['fill_wait_h','P6','fill wait',-1],['cip_h','P6','CIP hours',-1]];
+  const dec = levels.find(([k]) => Math.abs((ma[k]||0) - (mb[k]||0)) > 1e-3);
+  let verdict;
+  if (!dec) verdict = 'The two plans score the same on every priority. Neither is better.';
+  else { const [k,rule,label,dir] = dec, win = ((ma[k]||0) - (mb[k]||0))*dir > 0 ? 'CP-SAT' : 'v49 heuristic';
+    const earlier = levels.slice(0, levels.indexOf(dec)).filter(l => l[0]!=='target_miss_h').map(l=>l[1]).filter((x,i,arr)=>arr.indexOf(x)===i);
+    const loser = win==='CP-SAT' ? 'v49' : 'cpsat', behind = items.filter(i => i.win===loser).map(i => `${i.title.toLowerCase()} (${i.rule})`);
+    verdict = `<b>Best: ${win}.</b> It wins on ${label} (${rule})${earlier.length?`, after tying on ${earlier.join(', ')}`:''}, and that is the highest priority where the plans differ.${behind.length?` ${loser==='v49'?'v49':'CP-SAT'} is ahead on ${behind.join(' and ')}, which ranks lower.`:''}${!w.engines.cpsat.valid||!w.engines.v49.valid?' Note: one plan breaks a hard rule.':''}`; }
+  el.innerHTML = `<h2>Where the plans differ <small class="hint">top ${top.length} of ${items.length}, in priority order; click a PO to find it on the charts</small></h2>
+    <div class="verdict">${verdict}</div>
+    <ol>${top.map((it,i) => `<li><div class="k"><span class="lbl">${i+1}. ${it.title} <span class="rule" style="color:var(--accent)">${it.rule}</span></span>${it.win?`<span class="win ${it.win==='cpsat'?'cp':'v4'}">${it.win==='cpsat'?'CP-SAT':'v49'} better</span>`:''}</div>
+      <div class="n num">${it.n} <span class="hint">CP-SAT vs v49</span></div><p>${it.text}</p>${chips(it.ids)}</li>`).join('')}</ol>`;
+}
+$('#diff').addEventListener('click', e => { const b = e.target.closest('[data-pin]'); if (!b) return; S.selected = b.dataset.pin; applyFocus(); scrollToTask(b.dataset.pin) });
+
 /* ---------- wiring ---------- */
 function toggleSet(name, v){ S[name].has(v) ? S[name].delete(v) : S[name].add(v); save(name); renderToolbar(); renderGantt() }
 function render(){
@@ -647,7 +744,7 @@ function render(){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected', b.dataset.tab===S.tab));
   $('#ganttView').hidden = S.tab!=='gantt'; $('#dataView').hidden = S.tab!=='data';
   kpis(); renderToolbar();
-  if (S.tab==='gantt') renderGantt(); else { renderData(); renderStatus() }
+  if (S.tab==='gantt'){ renderDiff(); renderGantt() } else { renderData(); renderStatus() }
 }
 $('#week').addEventListener('change', e => { S.week = +e.target.value; S.selected = null; S.linkMode = store.get('linkMode', null); save('week'); render() });
 $('#mode').addEventListener('click', e => { const v = e.target.dataset.v; if (!v) return; S.mode = v; save('mode'); render() });
