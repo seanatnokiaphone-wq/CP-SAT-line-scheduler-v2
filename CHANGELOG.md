@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 (2026-10-04)
+- Rule S14 (Sean, 19:53 UTC): fill route time = volume / filler rate for the pack, ±10%, rounded to the half hour. Rates are Claude's typical figures (`plant.FILL_RATE_LPH`) until the plant's are known. `fill_time="random"` keeps v49's 0.5-3h draw; parity tests use it.
+- Viewer: weeks re-optimised with rate-based fill times; PO data shows each fill's rate in L/h.
+
 ## 0.3.1 (2026-10-04)
 - Viewer: Compare shows "Where the plans differ": the best plan (first priority that differs, P0, P3, P4, P6) and the top 3 differences with where they happen and the POs involved.
 - Viewer: PO labels on the bars: off, PO number, or PO number + SKU (from Sean's comment on the artifact).

@@ -579,9 +579,9 @@ function dataViews(d){
         ['volumeL','Volume L','r',r=>r.volumeL.toLocaleString()],['duration','Dur','r',r=>fh(r.duration)],['start','Start','r',r=>`<span title="${clock(r.start)}">${fh(r.start)}</span>`],['end','End','r',r=>`<span title="${clock(r.end)}">${fh(r.end)}</span>`],
         ['free','Tank free (H4)','r',r=>`<span title="${clock(r.free)}">${fh(r.free)}</span>`],['cip','Pre-CIP','',r=>r.cip?`${CIP_LABEL[r.cipRule]||r.cipRule} ${fh(r.cip)}`:'<span class="dash">Clean tank</span>'],['fills','Fill POs','m',r=>r.fills||dash]] },
     fills: { label:`Fill POs (${P.fills.length})`, rows: P.fills.map(f => { const t = d.sf[f.id], i = d.info[f.id];
-        return {...f, line:t.line, start:t.start, end:t.end, ready:i.ready, due:i.due, late:i.late, wait:i.wait, wash:t.washStart!=null?t.washEnd-t.washStart:0, washRule:d.washRule[f.id]||'', _s:[f.id,f.batchId,f.sku,f.productName,f.format,t.line]} }),
+        return {...f, rate:f.volumeL/f.duration, line:t.line, start:t.start, end:t.end, ready:i.ready, due:i.due, late:i.late, wait:i.wait, wash:t.washStart!=null?t.washEnd-t.washStart:0, washRule:d.washRule[f.id]||'', _s:[f.id,f.batchId,f.sku,f.productName,f.format,t.line]} }),
       cols: [['id','Fill PO','m'],['batchId','Parent','m'],['sku','SKU','m'],['productName','Product'],['category','Cat','',r=>catBadge(r.category)],['system','Sys','r'],['line','Line','m'],['format','Format'],
-        ['volumeL','Litres','r',r=>r.volumeL.toLocaleString()],['units','Units','r',r=>r.units.toLocaleString()],['duration','Dur','r',r=>fh(r.duration)],
+        ['volumeL','Litres','r',r=>r.volumeL.toLocaleString()],['units','Units','r',r=>r.units.toLocaleString()],['duration','Dur','r',r=>fh(r.duration)],['rate','L/h (S14)','r',r=>Math.round(r.volumeL/r.duration).toLocaleString()],
         ['ready','Ready','r',r=>`<span title="${clock(r.ready)}">${fh(r.ready)}</span>`],['start','Start','r',r=>`<span title="${clock(r.start)}">${fh(r.start)}</span>`],['end','End','r',r=>`<span title="${clock(r.end)}">${fh(r.end)}</span>`],
         ['due','Fill by (P3)','r',r=>`<span title="hold limit ${r.holdMax}h">${fh(r.due)}</span>`],['late','Late','r',r=>r.late>E?`<span class="late">${fh(r.late)}</span>`:dash],['wait','Wait','r',r=>r.wait>E?fh(r.wait):'0h'],
         ['wash','Wash before','',r=>r.wash?`${(CIP_LABEL[r.washRule.split('+')[0]]||'Wash')}${r.washRule.includes('+')?' + pack change':''} ${fh(r.wash)}`:dash]] },
@@ -781,7 +781,7 @@ $('#grid').addEventListener('click', e => {
 });
 let rz = 0; addEventListener('resize', () => { if (S.zoom!=='fit' || S.tab!=='gantt') return; clearTimeout(rz); rz = setTimeout(renderGantt, 150) });
 
-$('#foot').innerHTML = `Schedules were worked out ahead of time by the Python optimiser (v0.2.x: v49 heuristic port, then CP-SAT, then the rule checker); this page only displays them. Hour 0 is Mon 07:00. Weeks come from the v49 generator with the seed shown, so the same seed gives the same orders as the prototype. Priority order: P2, P0, P1, P3, P4, P6. Plans that end past ${WEEK} h at 200 POs are mostly held back by F7's cap of 3 fills per week, which is still an open rule question. Critical path, wash type and tank status are worked out in this page from the plan; they are not part of the solver's output.`;
+$('#foot').innerHTML = `Schedules were worked out ahead of time by the Python optimiser (v0.2.x: v49 heuristic port, then CP-SAT, then the rule checker); this page only displays them. Hour 0 is Mon 07:00. Weeks come from the v49 generator with the seed shown, so the same seed gives the same orders as the prototype. Priority order: P2, P0, P1, P3, P4, P6. Fill times follow volume ÷ filler rate ±10% (S14), using typical rates until the plant's own are given. Critical path, wash type and tank status are worked out in this page from the plan; they are not part of the solver's output.`;
 render();
 })();
 </script>

@@ -42,6 +42,12 @@ TRIO_STAGGER = 1.0  # H8
 TRIO_FILL_LEAD = 2.0  # H8
 TARGET_WINDOW = 6.0  # P2
 DEFAULT_CAPACITY = {1: 26000, 2: 22000, 3: 8000, 4: 6000}  # H12
+# S14 (Sean, 2026-10-04 19:53 UTC): a fill PO's route time is its volume / the filler rate for its pack, with a
+# +/-10% spread. Rates (litres per hour) are typical semi-automatic line figures chosen by Claude, to be
+# replaced with the plant's own: IBC 8/h, 220 L drum 30/h, 110 L drum 45/h, 20 L pail 240/h,
+# 1 L 3000/h, 3 L 1200/h, 5 L 900/h.
+FILL_RATE_LPH = {"1000L": 8000, "220L": 6600, "110L": 4950, "20L": 4800, "1L": 3000, "3L": 3600, "5L": 4500}
+FILL_RATE_SPREAD = 0.10
 EPS = 1e-6
 
 

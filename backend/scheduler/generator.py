@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from .plant import DEFAULT_CAPACITY, PACK_LABEL, SMALL_PACKS, SYSTEMS, WEEK, Batch, Fill, Plant, Product
+from .plant import DEFAULT_CAPACITY, FILL_RATE_LPH, FILL_RATE_SPREAD, PACK_LABEL, SMALL_PACKS, SYSTEMS, WEEK, Batch, Fill, Plant, Product
 from .rng import js_round, mulberry32
 
 NAME_POOLS = {
@@ -36,7 +36,10 @@ def _num(x: float):
 def generate_plant(seed: int, batch_count: int, fill_min=0.5, fill_max=3.0, batch_min=3, batch_max=6, *,
                    capacity: Optional[dict] = None, hold_range=(6, 12), double_fill: Optional[dict] = None,
                    trio_pct=60, mix: Optional[dict] = None, run_times: Optional[dict] = None,
-                   trio_three_fill_pct=TRIO_THREE_FILL_PCT) -> Plant:
+                   trio_three_fill_pct=TRIO_THREE_FILL_PCT, fill_time="rate",
+                   fill_rates: Optional[dict] = None, fill_spread=FILL_RATE_SPREAD) -> Plant:
+    """fill_time "rate" (S14): fill route time = volume / filler rate +/- spread. "random" keeps v49's draw
+    between fill_min and fill_max, so with trio_three_fill_pct=0 the week matches v49 exactly."""
     capacity = {int(k): v for k, v in (capacity or DEFAULT_CAPACITY).items()}
     double_fill = {int(k): v for k, v in (double_fill or DEFAULT_DOUBLE_FILL).items()}
     run_times = {int(k): v for k, v in (run_times or {}).items()}
@@ -194,6 +197,12 @@ def generate_plant(seed: int, batch_count: int, fill_min=0.5, fill_max=3.0, batc
         f["volumeL"] = js_round(source * share)
         f["units"] = math.floor(f["volumeL"] / float(f["pack"].rstrip("L")))
         f["holdMax"] = hold_of[f["sku"]]
+    if fill_time == "rate":  # S14: own stream, so the orders, packs and volume split stay as drawn above
+        rates = {**FILL_RATE_LPH, **(fill_rates or {})}
+        rate_rng = mulberry32((seed ^ 0x5BD1E995) & 0xFFFFFFFF)
+        for f in fills:
+            raw = f["volumeL"] / rates[f["pack"]] * (1 + fill_spread * (2 * rate_rng() - 1))
+            f["duration"] = max(0.5, js_round(raw * 2) / 2)
     for b in batches:
         b["duration"] = _num(b["duration"])
     for f in fills:
