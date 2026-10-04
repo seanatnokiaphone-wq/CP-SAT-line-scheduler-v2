@@ -36,7 +36,7 @@ def refine_windows(plant: Plant, downtime: list[Downtime], s: Settings, best: Sc
         improved = False
         for a in starts:
             left = seconds - (time.time() - t0)
-            if left < 2:
+            if left < 2 or (s.should_stop and s.should_stop()):
                 break
             base_pins = window_pins(best, a, a + width)
             pins = {**base_pins, **{k: {**base_pins.get(k, {}), **v} for k, v in (s.pins or {}).items()}}

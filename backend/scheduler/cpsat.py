@@ -51,6 +51,7 @@ class Settings:
     pins: dict = field(default_factory=dict)  # id -> {"start": h, "line": "F3", "tank": "T1A", "cip_start", "cip_end", "wash_start", "wash_end"}
     replan_from: float | None = None
     on_solution: object = None  # callback(seconds, level, objective, schedule) for live progress
+    should_stop: object = None  # callable -> True to stop the search early (a cancelled job)
     refine: bool | None = None  # big weeks: window refinement after the whole-week solve (None = by size)
 
 
@@ -449,6 +450,11 @@ class _Progress(cp_model.CpSolverSolutionCallback):
         self.wm, self.level, self.t0, self.every, self.last = wm, level, t0, every, -1e9
 
     def on_solution_callback(self):
+        if self.wm.s.should_stop and self.wm.s.should_stop():
+            self.StopSearch()
+            return
+        if not self.wm.s.on_solution:
+            return
         now = time.time()
         if now - self.last < self.every:
             return
@@ -475,7 +481,7 @@ def solve(plant: Plant, downtime: list[Downtime], s: Settings, hint: Schedule | 
     total = sum(sh for *_, sh in levels)
     for k, (name, expr, share) in enumerate(levels):
         left = s.time_limit - (time.time() - t0)
-        if left <= 0.5:
+        if left <= 0.5 or (s.should_stop and s.should_stop()):
             break
         later = sum(sh for *_, sh in levels[k + 1:])
         budget = max(0.5, left * share / (share + later)) if k < len(levels) - 1 else left
@@ -484,7 +490,7 @@ def solve(plant: Plant, downtime: list[Downtime], s: Settings, hint: Schedule | 
         solver.parameters.max_time_in_seconds = budget
         solver.parameters.num_workers = s.workers
         solver.parameters.log_search_progress = s.log
-        st = solver.Solve(m, _Progress(wm, name, t0) if s.on_solution else None)
+        st = solver.Solve(m, _Progress(wm, name, t0) if (s.on_solution or s.should_stop) else None)
         statuses[name] = {"status": solver.StatusName(st), "value": solver.ObjectiveValue() if st in (cp_model.OPTIMAL, cp_model.FEASIBLE) else None,
                           "bound": solver.BestObjectiveBound(), "seconds": round(solver.WallTime(), 1)}
         if on_level:
