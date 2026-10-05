@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 (2026-10-05)
+Roadmap items 2-7 approved by Sean (2026-10-04 22:39 UTC); item 1, real plant data, skipped for now.
+- Live app: FastAPI backend (`backend/app/main.py`) and a Vite + React + Tailwind front end (`frontend/`). Generate or open a week, press Optimise, and the Gantt updates live as better plans are found; stop at any time and keep the best plan. Plans are checked by the rule checker and saved under `backend/data/`.
+- The viewer's Gantt, KPIs, PO data grid and Compare panel are now a component the app mounts (`frontend/src/viewer/viewer.js`); any two plans can be compared.
+- Planner steering: pin a PO's time and tank/line or just its tank/line (M11, by Claude), mark fills urgent (P1) or give a target start (P2), and re-plan from a time, keeping work already started (M1, M10). Pins, stars and the re-plan time are drawn on the Gantt.
+- Explain: every batch PO outside the week limit (P0) and every fill past its hold limit (P3) gets its reasons, naming the line, tank, PO or stop that held it back; trios that cannot meet the hold limit in any plan at the S14 rates are flagged. Critical path with what set each step.
+- What-if scenarios: line speed, no planned maintenance, longer hold limit, quicker CIP, or your own; each is compared with a base plan and the best is marked.
+- Faster big weeks: all CPU cores, then 48h window passes after the whole-week solve (more POs in the week limit on 200-PO weeks).
+- Exports: Excel (summary, by line, by tank, batch and fill POs) and a black-and-white PDF for the floor (Gantt and run sheets with a Done column). Weeks save and open as JSON.
+
 ## 0.4.0 (2026-10-04)
 - Rule S14 (Sean, 19:53 UTC): fill route time = volume / filler rate for the pack, ±10%, rounded to the half hour. Rates are Claude's typical figures (`plant.FILL_RATE_LPH`) until the plant's are known. `fill_time="random"` keeps v49's 0.5-3h draw; parity tests use it.
 - Viewer: weeks re-optimised with rate-based fill times; PO data shows each fill's rate in L/h.

@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@import "./viewer/viewer.css";
+
+/* The app shell uses the viewer's colour tokens, so both follow light and dark mode together. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-row: var(--row);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --font-sans: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-sans); font-size: 15px; line-height: 1.45; }
+.btn { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--panel); border-radius:6px; padding:5px 12px; cursor:pointer; font-size:14px; white-space:nowrap; }
+.btn:hover:not(:disabled) { border-color: var(--accent); }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--bar-fg); font-weight:600; }
+.btn-danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+.field { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:5px 9px; font:inherit; color:var(--fg); min-width:0; }
+.cap { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:600; }
+.rid { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
